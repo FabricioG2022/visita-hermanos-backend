@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const {
   getAnnouncements,
   createAnnouncement,
@@ -17,9 +17,9 @@ router.use(verifyToken);
 
 // Avisos
 router.get('/announcements', getAnnouncements);
-router.post('/announcements', createAnnouncement);
-router.put('/announcements/:id', updateAnnouncement);
-router.delete('/announcements/:id', deleteAnnouncement);
+router.post('/announcements', requireRole('admin'), createAnnouncement);
+router.put('/announcements/:id', requireRole('admin'), updateAnnouncement);
+router.delete('/announcements/:id', requireRole('admin'), deleteAnnouncement);
 
 // Solicitudes
 router.get('/requests', getRequests);

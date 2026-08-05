@@ -16,7 +16,7 @@ router.use(verifyToken);
 router.get('/', getMembers);
 router.get('/:id', getMemberById);
 router.post('/', requireRole('admin'), createMember);
-router.put('/:id', requireRole('admin', 'voluntario'), updateMember);
+router.put('/:id', requireRole('admin'), updateMember);
 router.post('/:id/notes', addMemberNote);
 router.patch('/:id/favorite', toggleFavorite);
 router.delete('/:id', requireRole('admin'), deleteMember);
