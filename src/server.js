@@ -1,8 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 require('./config/firebase');
 
+const { sanitizeBody } = require('./middleware/sanitizeMiddleware');
 const authRoutes = require('./routes/authRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
@@ -15,9 +18,23 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Cabeceras HTTP de Seguridad (Helmet)
+app.use(helmet());
+
+// Limitador de tasa global para la API (300 req / 15 min)
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Demasiadas solicitudes desde esta IP, por favor intenta nuevamente más tarde.' }
+});
+app.use('/api/', globalLimiter);
+
 // Middlewares globales
 app.use(cors());
 app.use(express.json());
+app.use(sanitizeBody);
 
 // Ruta base de estado
 app.get('/api', (req, res) => {

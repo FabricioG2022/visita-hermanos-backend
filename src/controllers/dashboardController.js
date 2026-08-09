@@ -32,16 +32,32 @@ const getDashboardStats = async (req, res) => {
 
     const favorites = members.filter(m => Boolean(m.isFavorite)).length;
 
+    const parseSpanishDate = (dateStr) => {
+      if (!dateStr || typeof dateStr !== 'string') return 0;
+      const lower = dateStr.toLowerCase().trim();
+      if (lower.includes('sin visitas') || lower === 'n/a') return 0;
+      const parts = lower.includes('/') ? lower.split('/') : lower.split('-');
+      if (parts.length === 3) {
+        const [day, month, year] = parts;
+        if (year && year.length === 4) {
+          const d = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+          return d.getTime() || 0;
+        }
+      }
+      return new Date(dateStr).getTime() || 0;
+    };
+
     const recentVisits = members
-      .filter(m => m.lastVisit && m.lastVisit !== 'N/A' && m.lastVisit !== 'Sin visitas aún')
-      .slice(0, 5)
+      .filter(m => m.lastVisit && m.lastVisit !== 'N/A' && m.lastVisit !== 'Sin visitas aún' && m.lastVisit !== 'Sin visitas')
       .map(m => ({
         id:         m.id,
         name:       m.name || m.nombre || '',
         date:       m.lastVisit,
         status:     m.status || m.estadoAnimico || 'Verde',
         fotoUrl:    m.fotoUrl || ''
-      }));
+      }))
+      .sort((a, b) => parseSpanishDate(b.date) - parseSpanishDate(a.date))
+      .slice(0, 10);
 
     const result = {
       totalMembers,

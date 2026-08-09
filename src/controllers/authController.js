@@ -71,12 +71,14 @@ const getUsers = async (req, res) => {
     const resultUsers = authUsers.map(u => {
       const fsData = firestoreUsersMap[u.uid] || {};
       const isDbAdmin = u.email && u.email.toLowerCase() === 'admin@visita.com';
+      const isActive = fsData.active !== undefined ? fsData.active : !u.disabled;
       return {
         id: u.uid,
         uid: u.uid,
         email: u.email,
         name: fsData.name || u.displayName || (u.email ? u.email.split('@')[0].toUpperCase() : 'USUARIO'),
         role: fsData.role || (isDbAdmin ? 'admin' : 'visitador'),
+        active: isActive,
         createdAt: fsData.createdAt || u.metadata.creationTime || new Date().toISOString()
       };
     });
@@ -86,8 +88,8 @@ const getUsers = async (req, res) => {
     console.error('Error al obtener usuarios:', error.message);
     // Fallback mínimo si Auth también falla
     res.json([
-      { id: 'admin1', uid: 'admin1', email: 'admin@visita.com', name: 'Administrador', role: 'admin' },
-      { id: 'v1', uid: 'v1', email: 'firgodoy@hotmail.com', name: 'FIRGODOY', role: 'visitador' }
+      { id: 'admin1', uid: 'admin1', email: 'admin@visita.com', name: 'Administrador', role: 'admin', active: true },
+      { id: 'v1', uid: 'v1', email: 'firgodoy@hotmail.com', name: 'FIRGODOY', role: 'visitador', active: true }
     ]);
   }
 };
@@ -97,8 +99,9 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Por favor proporciona correo y contraseña' });
+    // Prevención de inyección NoSQL: validar tipo primitivo string
+    if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+      return res.status(400).json({ message: 'Por favor proporciona un correo y contraseña válidos en texto plano' });
     }
 
     const cleanEmail = email.trim().toLowerCase();
@@ -111,9 +114,17 @@ const login = async (req, res) => {
       return res.status(401).json({ message: 'Usuario no registrado o credenciales inválidas' });
     }
 
+    // Comprobar si está deshabilitado en Firebase Auth
+    if (userRecord.disabled) {
+      return res.status(403).json({ 
+        message: 'Tu cuenta ha sido desactivada por la administración pastoral. Por favor contacta al Pastor.' 
+      });
+    }
+
     // 2. Obtener datos y rol desde Firestore con fallback
     let role = cleanEmail === 'admin@visita.com' ? 'admin' : 'visitador';
     let name = userRecord.displayName || cleanEmail.split('@')[0].toUpperCase();
+    let isActive = true;
 
     try {
       const userDoc = await db.collection('users').doc(userRecord.uid).get();
@@ -121,9 +132,18 @@ const login = async (req, res) => {
         const data = userDoc.data();
         role = data.role || role;
         name = data.name || name;
+        if (data.active === false) {
+          isActive = false;
+        }
       }
     } catch (fsErr) {
       console.warn('⚠️ No se pudo consultar perfil en Firestore por cuota, se continuó con Auth:', fsErr.message);
+    }
+
+    if (!isActive) {
+      return res.status(403).json({ 
+        message: 'Tu cuenta ha sido inhabilitada por la administración pastoral. Por favor contacta al Pastor.' 
+      });
     }
 
     const token = jwt.sign(
@@ -134,7 +154,7 @@ const login = async (req, res) => {
 
     return res.json({
       token,
-      user: { id: userRecord.uid, email: cleanEmail, name, role }
+      user: { id: userRecord.uid, email: cleanEmail, name, role, active: true }
     });
   } catch (error) {
     console.error('Error en login backend:', error);
@@ -142,65 +162,11 @@ const login = async (req, res) => {
   }
 };
 
-// Registrar nuevo usuario (rol predeterminado: visitador)
+// Registrar nuevo usuario deshabilitado públicamente (solo alta por Pastor / Administrador)
 const register = async (req, res) => {
-  try {
-    const { email, password, name } = req.body;
-
-    if (!email || !password || !name) {
-      return res.status(400).json({ message: 'Todos los campos (nombre, correo y contraseña) son requeridos' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' });
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-
-    // Crear en Firebase Auth
-    let userRecord;
-    try {
-      userRecord = await admin.auth().createUser({
-        email: cleanEmail,
-        password,
-        displayName: name
-      });
-    } catch (err) {
-      if (err.code === 'auth/email-already-exists') {
-        return res.status(400).json({ message: 'Este correo electrónico ya está registrado' });
-      }
-      return res.status(400).json({ message: err.message || 'Error al crear usuario en Firebase' });
-    }
-
-    const role = 'visitador';
-    const newUserDoc = {
-      uid: userRecord.uid,
-      email: cleanEmail,
-      name,
-      role,
-      createdAt: new Date().toISOString()
-    };
-
-    try {
-      await db.collection('users').doc(userRecord.uid).set(newUserDoc);
-    } catch (fsErr) {
-      console.warn('⚠️ Aviso de cuota al crear perfil Firestore:', fsErr.message);
-    }
-
-    const token = jwt.sign(
-      { id: userRecord.uid, email: cleanEmail, name, role },
-      process.env.JWT_SECRET || 'super_secret_jwt_key_visita_hermanos_2026',
-      { expiresIn: '24h' }
-    );
-
-    return res.status(201).json({
-      token,
-      user: { id: userRecord.uid, email: cleanEmail, name, role }
-    });
-  } catch (error) {
-    console.error('Error en registro:', error);
-    return res.status(500).json({ message: 'Error interno al registrar usuario' });
-  }
+  return res.status(403).json({ 
+    message: 'El registro público está desactivado. El acceso a la plataforma es privado y únicamente puede ser otorgado por el Pastor o Administrador.' 
+  });
 };
 
 // Recuperación de contraseña vía Firebase Auth
@@ -253,7 +219,7 @@ const inviteUser = async (req, res) => {
       });
     } catch (err) {
       if (err.code === 'auth/email-already-exists') {
-        userRecord = await admin.auth().getUserByEmail(cleanEmail);
+        return res.status(400).json({ message: 'Este correo electrónico ya está registrado en el sistema.' });
       } else {
         return res.status(400).json({ message: err.message || 'Error al crear usuario' });
       }
@@ -274,12 +240,42 @@ const inviteUser = async (req, res) => {
     }
 
     res.status(201).json({
-      message: `Usuario ${name} invitado/creado con éxito`,
+      message: `Usuario ${name} registrado con éxito con rol de ${userRole === 'admin' ? 'Administrador' : 'Visitador'}`,
       user: { id: userRecord.uid, ...userData }
     });
   } catch (error) {
     console.error('Error al invitar usuario:', error);
-    res.status(500).json({ message: 'Error al procesar la invitación de usuario' });
+    res.status(500).json({ message: 'Error al procesar la alta del usuario' });
+  }
+};
+
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: 'ID de usuario requerido' });
+    }
+
+    if (id === req.user.id) {
+      return res.status(400).json({ message: 'No puedes eliminar tu propio usuario en uso.' });
+    }
+
+    try {
+      await admin.auth().deleteUser(id);
+    } catch (authErr) {
+      console.warn('⚠️ No se pudo eliminar en Firebase Auth:', authErr.message);
+    }
+
+    try {
+      await db.collection('users').doc(id).delete();
+    } catch (fsErr) {
+      console.warn('⚠️ No se pudo eliminar en Firestore:', fsErr.message);
+    }
+
+    res.json({ message: 'Usuario dado de baja y eliminado del sistema correctamente.' });
+  } catch (error) {
+    console.error('Error al eliminar usuario:', error);
+    res.status(500).json({ message: 'Error interno al dar de baja el usuario' });
   }
 };
 
@@ -345,5 +341,47 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { seedAdminUser, login, register, forgotPassword, getUsers, inviteUser, getMe, updateProfile };
+const toggleUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { active } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: 'ID de usuario requerido' });
+    }
+
+    if (id === req.user.id) {
+      return res.status(400).json({ message: 'No puedes desactivar tu propia cuenta en uso.' });
+    }
+
+    const isActive = active === true;
+
+    // Actualizar estado en Firebase Auth (disabled = !isActive)
+    try {
+      await admin.auth().updateUser(id, { disabled: !isActive });
+    } catch (authErr) {
+      console.warn('⚠️ No se pudo actualizar estado en Auth:', authErr.message);
+    }
+
+    // Actualizar estado en Firestore
+    try {
+      await db.collection('users').doc(id).set({
+        active: isActive,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (fsErr) {
+      console.warn('⚠️ No se pudo actualizar estado en Firestore:', fsErr.message);
+    }
+
+    res.json({
+      message: `Usuario ${isActive ? 'activado' : 'desactivado/inhabilitado'} con éxito.`,
+      active: isActive
+    });
+  } catch (error) {
+    console.error('Error al cambiar estado de usuario:', error);
+    res.status(500).json({ message: 'Error al modificar estado del usuario' });
+  }
+};
+
+module.exports = { seedAdminUser, login, register, forgotPassword, getUsers, inviteUser, deleteUser, toggleUserStatus, getMe, updateProfile };
 

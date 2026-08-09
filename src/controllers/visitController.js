@@ -16,48 +16,59 @@ const getVisits = async (req, res) => {
     }
 
     let visitsList = [];
+    const seenVisitKeys = new Set();
+
+    // 1. Obtener documentos de la colección 'visits'
     try {
-      // 1. Obtener documentos de la colección 'visits'
       const snapshot = await db.collection('visits').get();
       snapshot.forEach(doc => {
-        visitsList.push({ id: doc.id, ...doc.data() });
+        const vData = doc.data();
+        visitsList.push({ id: doc.id, ...vData });
+        if (vData.memberId && vData.date) {
+          seenVisitKeys.add(`${vData.memberId}_${vData.date}_${vData.summary || ''}`);
+        }
       });
+    } catch (fsErr) {
+      console.warn("⚠️ Advertencia al leer coleccion visits:", fsErr.message);
+    }
 
-      // 2. Obtener miembros (utiliza caché centralizado en memoria, 0 lecturas adicionales a Firestore)
+    // 2. Obtener miembros e integrar su historialVisitas (para sincronizar con app móvil)
+    try {
       const members = await fetchAllMembersInternal();
       members.forEach(mData => {
         const mName = mData.name || mData.nombre || '';
         const mId = mData.id;
         if (mData.historialVisitas && Array.isArray(mData.historialVisitas)) {
           mData.historialVisitas.forEach((v, idx) => {
-            visitsList.push({
-              id: `mv_${mId}_${idx}`,
-              memberId: mId,
-              memberName: mName,
-              date: v.fecha || mData.lastVisit || '',
-              time: v.hora || '16:00',
-              responsible: v.visitador || 'Voluntario',
-              summary: v.nota || v.resumen || 'Visita registrada en historial de miembro.',
-              status: v.nuevoEstadoAnimico || mData.status || 'Verde',
-              fotoUrl: mData.fotoUrl || '',
-              createdAt: v.fecha || new Date().toISOString()
-            });
+            const dateStr = v.fecha || mData.lastVisit || '';
+            const summaryStr = v.nota || v.resumen || '';
+            const key = `${mId}_${dateStr}_${summaryStr}`;
+            if (!seenVisitKeys.has(key)) {
+              seenVisitKeys.add(key);
+              visitsList.push({
+                id: `mv_${mId}_${idx}`,
+                memberId: mId,
+                memberName: mName,
+                date: dateStr,
+                time: v.hora || '16:00',
+                responsible: v.visitador || 'Voluntario',
+                summary: summaryStr || 'Visita registrada en historial de miembro.',
+                status: v.nuevoEstadoAnimico || mData.status || 'Verde',
+                fotoUrl: mData.fotoUrl || '',
+                createdAt: v.fecha || new Date().toISOString()
+              });
+            }
           });
         }
       });
-
-      visitsList.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
-
-      cacheService.set(CACHE_KEY_VISITS, visitsList);
-      cached = visitsList;
     } catch (fsErr) {
-      if (fsErr.code === 8 || fsErr.message?.includes('Quota exceeded')) {
-        console.warn('⚠️ Cuota diaria de Firestore alcanzada en visitas. Usando cache local.');
-        cached = cacheService.get(CACHE_KEY_VISITS) || [];
-      } else {
-        throw fsErr;
-      }
+      console.warn("⚠️ Advertencia al leer historialVisitas de miembros:", fsErr.message);
     }
+
+    visitsList.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
+
+    cacheService.set(CACHE_KEY_VISITS, visitsList);
+    cached = visitsList;
 
     let list = [...(cached || [])];
     if (memberId) {
@@ -73,7 +84,7 @@ const getVisits = async (req, res) => {
 
 const createVisit = async (req, res) => {
   try {
-    const { memberId, memberName, date, time, summary, responsible } = req.body;
+    const { memberId, memberName, date, time, summary, responsible, status, visitType } = req.body;
 
     let name = memberName;
     if (!name && memberId) {
@@ -86,36 +97,62 @@ const createVisit = async (req, res) => {
 
     const newId = `v_${Date.now()}`;
     const visitDate = date || new Date().toLocaleDateString('es-AR');
+    const visitTime = time || new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    const visitStatus = status || "Verde";
+    const visitResponsible = responsible || (req.user ? req.user.name : "Voluntario");
+    const visitSummary = summary || "Visita realizada exitosamente.";
 
     const newVisit = {
       id: newId,
       memberId: memberId || "1",
       memberName: name || "Miembro Seleccionado",
       date: visitDate,
-      time: time || "16:00",
-      responsible: responsible || (req.user ? req.user.name : "Voluntario"),
-      summary: summary || "Visita realizada exitosamente.",
-      status: "Realizada",
+      time: visitTime,
+      responsible: visitResponsible,
+      visitType: visitType || "Visita en domicilio",
+      summary: visitSummary,
+      status: visitStatus,
       createdAt: new Date().toISOString()
     };
 
+    // 1. Guardar documento en colección 'visits'
     await db.collection('visits').doc(newId).set(newVisit);
 
+    // 2. Actualizar el miembro en la colección 'miembros' (actualizar estadoAnimico, status, ultimaVisita, lastVisit y historialVisitas)
     if (memberId) {
       try {
         const memberRef = db.collection('miembros').doc(memberId);
         const memberDoc = await memberRef.get();
         if (memberDoc.exists) {
-          await memberRef.update({ ultimaVisita: visitDate });
+          const mData = memberDoc.data() || {};
+          const currentHistory = Array.isArray(mData.historialVisitas) ? mData.historialVisitas : [];
+
+          const newHistoryItem = {
+            fecha: visitDate,
+            hora: visitTime,
+            visitador: visitResponsible,
+            nuevoEstadoAnimico: visitStatus,
+            nota: visitSummary,
+            tipoVisita: visitType || "Visita en domicilio"
+          };
+
+          const updatedHistory = [newHistoryItem, ...currentHistory];
+
+          await memberRef.update({
+            estadoAnimico: visitStatus,
+            status: visitStatus,
+            ultimaVisita: visitDate,
+            lastVisit: visitDate,
+            historialVisitas: updatedHistory
+          });
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error("Error actualizando miembro en createVisit:", e.message);
+      }
     }
 
-    // Actualizar caché de visitas y desinvalidar miembros/dashboard
-    let cached = cacheService.get(CACHE_KEY_VISITS) || [];
-    cached.unshift(newVisit);
-    cacheService.set(CACHE_KEY_VISITS, cached);
-    cacheService.invalidateKeys('miembros', 'dashboard_stats');
+    // Invalidar cachés para forzar recarga limpia en todo el sistema
+    cacheService.invalidateKeys('miembros', 'visitas', 'dashboard_stats');
 
     res.status(201).json(newVisit);
   } catch (error) {

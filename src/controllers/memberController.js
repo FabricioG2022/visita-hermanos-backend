@@ -28,8 +28,14 @@ const toFirestore = (body) => {
   if (body.phone     !== undefined) data.telefono      = body.phone;
   if (body.email     !== undefined) data.email         = body.email;
   if (body.address   !== undefined) data.direccion     = body.address;
-  if (body.status    !== undefined) data.estadoAnimico = body.status;
-  if (body.lastVisit !== undefined) data.ultimaVisita  = body.lastVisit;
+  if (body.status    !== undefined) {
+    data.estadoAnimico = body.status;
+    data.status        = body.status;
+  }
+  if (body.lastVisit !== undefined) {
+    data.ultimaVisita  = body.lastVisit;
+    data.lastVisit     = body.lastVisit;
+  }
   if (body.isFavorite!== undefined) data.isFavorite    = Boolean(body.isFavorite);
   if (body.notes     !== undefined) data.notas         = body.notes;
   if (body.historialNotas !== undefined) data.historialNotas = body.historialNotas;
