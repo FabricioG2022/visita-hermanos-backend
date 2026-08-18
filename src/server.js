@@ -61,6 +61,16 @@ app.use((req, res) => {
   res.status(404).json({ message: 'Endpoint no encontrado' });
 });
 
+// Middleware global de captura de errores
+app.use((err, req, res, next) => {
+  console.error('❌ Error no controlado:', err);
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.status(err.statusCode || 500).json({
+    message: isProduction ? 'Ocurrió un error interno en el servidor.' : (err.message || 'Error interno del servidor'),
+    ...(isProduction ? {} : { stack: err.stack })
+  });
+});
+
 const { seedAdminUser } = require('./controllers/authController');
 
 // Iniciar Servidor
@@ -73,3 +83,13 @@ app.listen(PORT, async () => {
   // Inicialización de Semillas en Firebase Auth
   await seedAdminUser();
 });
+
+// Manejadores de eventos del proceso Node.js (evitan que caiga la aplicación)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Promesa rechazada no manejada:', promise, 'Razón:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('💥 Excepción no capturada a nivel de proceso:', err);
+});
+

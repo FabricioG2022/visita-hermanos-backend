@@ -70,14 +70,17 @@ const getUsers = async (req, res) => {
 
     const resultUsers = authUsers.map(u => {
       const fsData = firestoreUsersMap[u.uid] || {};
-      const isDbAdmin = u.email && u.email.toLowerCase() === 'admin@visita.com';
+      const userEmail = (u.email || '').toLowerCase();
+      const isSuperAdmin = userEmail === 'fabrigo2015@gmail.com' || fsData.role === 'superadmin' || fsData.role === 'SUPER_ADMIN';
+      const isDbAdmin = isSuperAdmin || userEmail === 'admin@visita.com';
+      const defaultRole = isSuperAdmin ? 'superadmin' : (isDbAdmin ? 'admin' : 'visitador');
       const isActive = fsData.active !== undefined ? fsData.active : !u.disabled;
       return {
         id: u.uid,
         uid: u.uid,
         email: u.email,
         name: fsData.name || u.displayName || (u.email ? u.email.split('@')[0].toUpperCase() : 'USUARIO'),
-        role: fsData.role || (isDbAdmin ? 'admin' : 'visitador'),
+        role: fsData.role || defaultRole,
         active: isActive,
         createdAt: fsData.createdAt || u.metadata.creationTime || new Date().toISOString()
       };
@@ -256,8 +259,34 @@ const deleteUser = async (req, res) => {
       return res.status(400).json({ message: 'ID de usuario requerido' });
     }
 
-    if (id === req.user.id) {
+    if (id === req.user?.id) {
       return res.status(400).json({ message: 'No puedes eliminar tu propio usuario en uso.' });
+    }
+
+    // Verificar si el usuario objetivo es SuperAdmin o la cuenta principal de soporte
+    let targetEmail = '';
+    let targetRole = '';
+
+    try {
+      const authUser = await admin.auth().getUser(id);
+      if (authUser && authUser.email) targetEmail = authUser.email.toLowerCase();
+    } catch (e) {}
+
+    try {
+      const userDoc = await db.collection('users').doc(id).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        if (!targetEmail && data.email) targetEmail = data.email.toLowerCase();
+        if (data.role) targetRole = data.role.toLowerCase();
+      }
+    } catch (e) {}
+
+    if (
+      targetEmail === 'fabrigo2015@gmail.com' ||
+      targetRole === 'superadmin' ||
+      targetRole === 'super_admin'
+    ) {
+      return res.status(403).json({ message: 'No se puede eliminar la cuenta principal de soporte del sistema (SuperAdmin).' });
     }
 
     try {
@@ -350,8 +379,34 @@ const toggleUserStatus = async (req, res) => {
       return res.status(400).json({ message: 'ID de usuario requerido' });
     }
 
-    if (id === req.user.id) {
+    if (id === req.user?.id) {
       return res.status(400).json({ message: 'No puedes desactivar tu propia cuenta en uso.' });
+    }
+
+    // Verificar si el usuario objetivo es SuperAdmin o la cuenta principal de soporte
+    let targetEmail = '';
+    let targetRole = '';
+
+    try {
+      const authUser = await admin.auth().getUser(id);
+      if (authUser && authUser.email) targetEmail = authUser.email.toLowerCase();
+    } catch (e) {}
+
+    try {
+      const userDoc = await db.collection('users').doc(id).get();
+      if (userDoc.exists) {
+        const data = userDoc.data();
+        if (!targetEmail && data.email) targetEmail = data.email.toLowerCase();
+        if (data.role) targetRole = data.role.toLowerCase();
+      }
+    } catch (e) {}
+
+    if (
+      targetEmail === 'fabrigo2015@gmail.com' ||
+      targetRole === 'superadmin' ||
+      targetRole === 'super_admin'
+    ) {
+      return res.status(403).json({ message: 'No se puede inhabilitar la cuenta principal de soporte del sistema (SuperAdmin).' });
     }
 
     const isActive = active === true;
