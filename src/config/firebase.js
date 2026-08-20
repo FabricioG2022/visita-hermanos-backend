@@ -11,26 +11,38 @@ if (!global.Headers) {
   }
 }
 
+const fs = require('fs');
+const path = require('path');
 const admin = require('firebase-admin');
 
 let serviceAccount;
 
-// 1. Intentar cargar desde variable de entorno con JSON completo (útil para Render / Heroku / Vercel)
+// 1. Intentar cargar desde variable de entorno con JSON completo
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT === 'string'
       ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
       : process.env.FIREBASE_SERVICE_ACCOUNT;
-    
-    if (serviceAccount && serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    }
   } catch (err) {
     console.error('❌ Error al parsear FIREBASE_SERVICE_ACCOUNT:', err.message);
   }
 }
 
-// 2. Intentar cargar desde variables individuales
+// 2. Intentar cargar desde Secret Files de Render (/etc/secrets/serviceAccountKey.json)
+if (!serviceAccount) {
+  const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
+  if (fs.existsSync(renderSecretPath)) {
+    try {
+      const fileContent = fs.readFileSync(renderSecretPath, 'utf8');
+      serviceAccount = JSON.parse(fileContent);
+      console.log('🔑 Credenciales cargadas exitosamente desde Render Secret File (/etc/secrets/serviceAccountKey.json)');
+    } catch (err) {
+      console.error('❌ Error al leer el Secret File de Render:', err.message);
+    }
+  }
+}
+
+// 3. Intentar cargar desde variables individuales
 if (!serviceAccount && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
   serviceAccount = {
     projectId: process.env.FIREBASE_PROJECT_ID,
@@ -39,16 +51,19 @@ if (!serviceAccount && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_
   };
 }
 
-// 3. Fallback a archivo local (desarrollo local)
+// 4. Fallback a archivo local (desarrollo local en src/config/serviceAccountKey.json)
 if (!serviceAccount) {
   try {
     serviceAccount = require('./serviceAccountKey.json');
   } catch (err) {
-    console.error('❌ Error: No se encontró serviceAccountKey.json ni variables de entorno para Firebase.');
+    console.error('❌ Error: No se encontró serviceAccountKey.json en local ni en Render Secret Files (/etc/secrets/) ni en variables de entorno.');
   }
 }
 
 if (!admin.apps.length && serviceAccount) {
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+  }
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
