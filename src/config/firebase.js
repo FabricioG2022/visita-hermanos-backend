@@ -21,6 +21,10 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT === 'string'
       ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
       : process.env.FIREBASE_SERVICE_ACCOUNT;
+    
+    if (serviceAccount && serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
   } catch (err) {
     console.error('❌ Error al parsear FIREBASE_SERVICE_ACCOUNT:', err.message);
   }
