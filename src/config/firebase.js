@@ -12,13 +12,44 @@ if (!global.Headers) {
 }
 
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
 
-if (!admin.apps.length) {
+let serviceAccount;
+
+// 1. Intentar cargar desde variable de entorno con JSON completo (útil para Render / Heroku / Vercel)
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  try {
+    serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT === 'string'
+      ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+      : process.env.FIREBASE_SERVICE_ACCOUNT;
+  } catch (err) {
+    console.error('❌ Error al parsear FIREBASE_SERVICE_ACCOUNT:', err.message);
+  }
+}
+
+// 2. Intentar cargar desde variables individuales
+if (!serviceAccount && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+  serviceAccount = {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  };
+}
+
+// 3. Fallback a archivo local (desarrollo local)
+if (!serviceAccount) {
+  try {
+    serviceAccount = require('./serviceAccountKey.json');
+  } catch (err) {
+    console.error('❌ Error: No se encontró serviceAccountKey.json ni variables de entorno para Firebase.');
+  }
+}
+
+if (!admin.apps.length && serviceAccount) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
-  console.log('🔥 Firebase Admin SDK inicializado correctamente para project_id:', serviceAccount.project_id);
+  const projectId = serviceAccount.project_id || serviceAccount.projectId;
+  console.log('🔥 Firebase Admin SDK inicializado correctamente para project_id:', projectId);
 }
 
 const db = admin.firestore();
