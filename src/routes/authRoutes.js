@@ -5,13 +5,18 @@ const { login, forgotPassword, getUsers, inviteUser, deleteUser, toggleUserStatu
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const { validateStringTypes } = require('../middleware/sanitizeMiddleware');
 
-// Rate limiter específico para Login (máximo 5 intentos por IP cada 15 minutos)
+// Rate limiter específico para Login (máximo 15 intentos por IP cada 15 minutos)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 15,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Demasiados intentos de inicio de sesión desde esta IP. Por favor espera 15 minutos.' }
+});
+
+// Endpoint liviano para pre-calentamiento del backend (despertar container Render)
+router.get('/ping', (req, res) => {
+  res.json({ status: 'ok', message: 'Backend awake', timestamp: Date.now() });
 });
 
 router.post('/login', authLimiter, validateStringTypes('email', 'password'), login);

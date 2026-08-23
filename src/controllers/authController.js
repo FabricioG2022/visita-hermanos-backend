@@ -23,14 +23,26 @@ const seedAdminUser = async () => {
       }
     }
 
-    // Intentar sincronizar usuarios en Firestore (con manejo silencioso de cuota)
+    // Intentar sincronizar usuarios en Firestore en paralelo (no bloqueante y resiliente)
     try {
       const listResult = await admin.auth().listUsers(100);
-      for (const u of listResult.users) {
+      await Promise.all(listResult.users.map(async (u) => {
+        const uEmail = (u.email || '').toLowerCase();
+        const isSuperAdmin = uEmail === 'fabrigo2015@gmail.com';
+        const isDbAdmin = uEmail === 'admin@visita.com';
+
         const userRef = db.collection('users').doc(u.uid);
         const userDoc = await userRef.get();
-        if (!userDoc.exists) {
-          const isDbAdmin = u.email && u.email.toLowerCase() === 'admin@visita.com';
+
+        if (isSuperAdmin) {
+          await userRef.set({
+            uid: u.uid,
+            email: u.email,
+            name: u.displayName || 'FABRIZIO GODOY (IT)',
+            role: 'superadmin',
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        } else if (!userDoc.exists) {
           const role = isDbAdmin ? 'admin' : 'visitador';
           const name = u.displayName || (u.email ? u.email.split('@')[0].toUpperCase() : 'USUARIO');
           await userRef.set({
@@ -41,7 +53,7 @@ const seedAdminUser = async () => {
             createdAt: u.metadata.creationTime || new Date().toISOString()
           });
         }
-      }
+      }));
     } catch (fsErr) {
       // Manejo silencioso: los usuarios se consultan dinámicamente desde Firebase Auth en getUsers
     }
@@ -80,7 +92,7 @@ const getUsers = async (req, res) => {
         uid: u.uid,
         email: u.email,
         name: fsData.name || u.displayName || (u.email ? u.email.split('@')[0].toUpperCase() : 'USUARIO'),
-        role: fsData.role || defaultRole,
+        role: isSuperAdmin ? 'superadmin' : (fsData.role || defaultRole),
         active: isActive,
         createdAt: fsData.createdAt || u.metadata.creationTime || new Date().toISOString()
       };
@@ -141,6 +153,23 @@ const login = async (req, res) => {
       }
     } catch (fsErr) {
       console.warn('⚠️ No se pudo consultar perfil en Firestore por cuota, se continuó con Auth:', fsErr.message);
+    }
+
+    // Forzar rol superadmin si es la cuenta IT / SuperAdmin principal
+    if (cleanEmail === 'fabrigo2015@gmail.com' || role === 'superadmin' || role === 'SUPER_ADMIN') {
+      role = 'superadmin';
+      // Asegurar que el rol quede grabado en Firestore para futuras consultas
+      try {
+        await db.collection('users').doc(userRecord.uid).set({
+          uid: userRecord.uid,
+          email: cleanEmail,
+          name: name || 'FABRIZIO GODOY (IT)',
+          role: 'superadmin',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (fsErr) {
+        console.warn('⚠️ No se pudo actualizar rol superadmin en Firestore:', fsErr.message);
+      }
     }
 
     if (!isActive) {

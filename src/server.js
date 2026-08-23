@@ -74,14 +74,16 @@ app.use((err, req, res, next) => {
 const { seedAdminUser } = require('./controllers/authController');
 
 // Iniciar Servidor
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(`🚀 Servidor Backend iniciado en puerto ${PORT}`);
   console.log(`📡 Endpoint base: http://localhost:${PORT}/api`);
   console.log(`====================================================`);
   
-  // Inicialización de Semillas en Firebase Auth
-  await seedAdminUser();
+  // Inicialización de Semillas en Firebase Auth en segundo plano (no bloqueante)
+  seedAdminUser().catch(err => {
+    console.error('⚠️ Error no crítico en inicialización de semillas:', err.message);
+  });
 });
 
 // Manejadores de eventos del proceso Node.js (evitan que caiga la aplicación)
