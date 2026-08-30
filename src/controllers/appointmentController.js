@@ -3,35 +3,6 @@ const cacheService = require('../services/cacheService');
 
 const CACHE_KEY_APPOINTMENTS = 'citas';
 
-const DEFAULT_APPOINTMENTS = [
-  {
-    id: 'a_1',
-    memberId: '1',
-    memberName: 'Juan Fidanza',
-    date: '2026-08-05',
-    time: '17:00',
-    visitType: 'Visita en domicilio',
-    location: 'Domicilio',
-    responsible: 'FIRGODOY',
-    observations: 'Coordinada previa llamada telefónica',
-    status: 'Pendiente',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'a_2',
-    memberId: '2',
-    memberName: 'María Rodríguez',
-    date: '2026-08-06',
-    time: '10:30',
-    visitType: 'Atención médica',
-    location: 'Centro congregacional',
-    responsible: 'Felipe',
-    observations: 'Acompañamiento en turno médico',
-    status: 'Pendiente',
-    createdAt: new Date().toISOString()
-  }
-];
-
 const getAppointments = async (req, res) => {
   try {
     const { memberId, status } = req.query;
@@ -44,10 +15,10 @@ const getAppointments = async (req, res) => {
         snapshot.forEach(doc => {
           appointmentsList.push({ id: doc.id, ...doc.data() });
         });
-        cached = appointmentsList.length > 0 ? appointmentsList : DEFAULT_APPOINTMENTS;
+        cached = appointmentsList;
       } catch (fsErr) {
         console.warn('⚠️ Cuota/Conexión a Firestore alcanzada en citas. Usando caché local.');
-        cached = DEFAULT_APPOINTMENTS;
+        cached = [];
       }
       cacheService.set(CACHE_KEY_APPOINTMENTS, cached);
     }
@@ -64,7 +35,7 @@ const getAppointments = async (req, res) => {
     res.json(list);
   } catch (error) {
     console.error('Error al obtener citas:', error.message);
-    let fallback = cacheService.get(CACHE_KEY_APPOINTMENTS) || DEFAULT_APPOINTMENTS;
+    let fallback = cacheService.get(CACHE_KEY_APPOINTMENTS) || [];
     res.json(fallback);
   }
 };
@@ -98,7 +69,7 @@ const createAppointment = async (req, res) => {
       console.warn('⚠️ Cuota/Conexión a Firestore en creación de cita, guardado en caché local.');
     }
 
-    let cached = cacheService.get(CACHE_KEY_APPOINTMENTS) || [...DEFAULT_APPOINTMENTS];
+    let cached = cacheService.get(CACHE_KEY_APPOINTMENTS) || [];
     cached.unshift(newAppointment);
     cacheService.set(CACHE_KEY_APPOINTMENTS, cached);
 
@@ -122,7 +93,7 @@ const updateAppointmentStatus = async (req, res) => {
       console.warn('⚠️ Cuota al actualizar estado de cita en Firestore, actualizado en caché.');
     }
 
-    let cached = cacheService.get(CACHE_KEY_APPOINTMENTS) || [...DEFAULT_APPOINTMENTS];
+    let cached = cacheService.get(CACHE_KEY_APPOINTMENTS) || [];
     const idx = cached.findIndex(a => String(a.id) === String(id));
     if (idx !== -1) {
       cached[idx] = { ...cached[idx], status: newStatus };

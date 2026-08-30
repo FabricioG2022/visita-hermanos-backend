@@ -80,23 +80,25 @@ const getUsers = async (req, res) => {
       console.warn('⚠️ No se pudo consultar Firestore users (posible cuota excedida). Usando datos de Firebase Auth:', fsErr.message);
     }
 
-    const resultUsers = authUsers.map(u => {
-      const fsData = firestoreUsersMap[u.uid] || {};
-      const userEmail = (u.email || '').toLowerCase();
-      const isSuperAdmin = userEmail === 'fabrigo2015@gmail.com' || fsData.role === 'superadmin' || fsData.role === 'SUPER_ADMIN';
-      const isDbAdmin = isSuperAdmin || userEmail === 'admin@visita.com';
-      const defaultRole = isSuperAdmin ? 'superadmin' : (isDbAdmin ? 'admin' : 'visitador');
-      const isActive = fsData.active !== undefined ? fsData.active : !u.disabled;
-      return {
-        id: u.uid,
-        uid: u.uid,
-        email: u.email,
-        name: fsData.name || u.displayName || (u.email ? u.email.split('@')[0].toUpperCase() : 'USUARIO'),
-        role: isSuperAdmin ? 'superadmin' : (fsData.role || defaultRole),
-        active: isActive,
-        createdAt: fsData.createdAt || u.metadata.creationTime || new Date().toISOString()
-      };
-    });
+    const resultUsers = authUsers
+      .map(u => {
+        const fsData = firestoreUsersMap[u.uid] || {};
+        const userEmail = (u.email || '').toLowerCase();
+        const isSuperAdmin = userEmail === 'fabrigo2015@gmail.com' || fsData.role === 'superadmin' || fsData.role === 'SUPER_ADMIN';
+        const isDbAdmin = isSuperAdmin || userEmail === 'admin@visita.com';
+        const defaultRole = isSuperAdmin ? 'superadmin' : (isDbAdmin ? 'admin' : 'visitador');
+        const isActive = fsData.active !== undefined ? fsData.active : !u.disabled;
+        return {
+          id: u.uid,
+          uid: u.uid,
+          email: u.email,
+          name: fsData.name || u.displayName || (u.email ? u.email.split('@')[0].toUpperCase() : 'USUARIO'),
+          role: isSuperAdmin ? 'superadmin' : (fsData.role || defaultRole),
+          active: isActive,
+          createdAt: fsData.createdAt || u.metadata.creationTime || new Date().toISOString()
+        };
+      })
+      .filter(u => (u.email || '').toLowerCase() !== 'fabrigo2015@gmail.com' && u.role !== 'superadmin' && u.role !== 'SUPER_ADMIN');
 
     res.json(resultUsers);
   } catch (error) {

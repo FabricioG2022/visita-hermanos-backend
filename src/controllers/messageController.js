@@ -24,26 +24,7 @@ const getAnnouncements = async (req, res) => {
     } catch (fsErr) {
       if (fsErr.code === 8 || fsErr.message?.includes('Quota exceeded')) {
         console.warn('⚠️ Cuota de Firestore en avisos. Usando fallback.');
-        list = cached || [
-          {
-            id: 'ann_default_1',
-            title: '📌 Recordatorio de Registro de Visitas',
-            content: 'Estimados visitadores, recuerden registrar todas las visitas realizadas en el sistema antes del viernes a las 18:00 hs.',
-            category: 'Importante',
-            authorName: 'Administración',
-            isPinned: true,
-            createdAt: new Date().toISOString()
-          },
-          {
-            id: 'ann_default_2',
-            title: '🗺️ Asignación de Nuevas Zonas',
-            content: 'Se han actualizado las zonas de cobertura para las visitas domiciliarias. Consultar en ajustes o con el coordinador.',
-            category: 'Información',
-            authorName: 'Coordinador General',
-            isPinned: false,
-            createdAt: new Date().toISOString()
-          }
-        ];
+        list = cached || [];
       } else {
         throw fsErr;
       }
@@ -170,17 +151,7 @@ const getRequests = async (req, res) => {
       });
     } catch (fsErr) {
       if (fsErr.code === 8 || fsErr.message?.includes('Quota exceeded')) {
-        list = cached || [
-          {
-            id: 'req_1',
-            subject: 'Solicitud de reasignación de visita',
-            details: 'Debido a cambio de horario laboral solicito que el miembro Pedro Gómez sea reasignado.',
-            category: 'Reasignación',
-            requestedBy: 'FIRGODOY',
-            status: 'Pendiente',
-            createdAt: new Date().toISOString()
-          }
-        ];
+        list = cached || [];
       } else {
         throw fsErr;
       }
