@@ -1,5 +1,6 @@
 const { db } = require('../config/firebase');
 const cacheService = require('../services/cacheService');
+const { validateAppointment } = require('../utils/appointmentValidator');
 
 const CACHE_KEY_APPOINTMENTS = 'citas';
 
@@ -42,24 +43,16 @@ const getAppointments = async (req, res) => {
 
 const createAppointment = async (req, res) => {
   try {
-    const { memberId, memberName, date, time, visitType, location, responsible, observations } = req.body;
-
-    if (!date || !time) {
-      return res.status(400).json({ message: 'La fecha y la hora son obligatorias' });
+    const validation = validateAppointment(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({ message: validation.error });
     }
 
     const newId = `a_${Date.now()}`;
     const newAppointment = {
       id: newId,
-      memberId: memberId || "1",
-      memberName: memberName || "Miembro Seleccionado",
-      date,
-      time,
-      visitType: visitType || "Visita en domicilio",
-      location: location || "Domicilio",
-      responsible: responsible || (req.user ? req.user.name : "Coordinador"),
-      observations: observations || "",
-      status: "Pendiente",
+      ...validation.data,
+      responsible: req.body.responsible || (req.user ? req.user.name : validation.data.responsible),
       createdAt: new Date().toISOString()
     };
 

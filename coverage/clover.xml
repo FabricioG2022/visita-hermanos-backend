@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1792886005169" clover="3.2.0">
+  <project timestamp="1792886005169" name="All files">
+    <metrics statements="9" coveredstatements="9" conditionals="27" coveredconditionals="27" methods="1" coveredmethods="1" elements="37" coveredelements="37" complexity="0" loc="9" ncloc="9" packages="1" files="1" classes="1"/>
+    <file name="appointmentValidator.js" path="C:\Users\firgo\Desktop\WebVisitaHermanos\backend\src\utils\appointmentValidator.js">
+      <metrics statements="9" coveredstatements="9" conditionals="27" coveredconditionals="27" methods="1" coveredmethods="1"/>
+      <line num="7" count="8" type="cond" truecount="5" falsecount="0"/>
+      <line num="8" count="4" type="stmt"/>
+      <line num="23" count="4" type="stmt"/>
+      <line num="26" count="4" type="cond" truecount="5" falsecount="0"/>
+      <line num="27" count="1" type="stmt"/>
+      <line num="34" count="3" type="cond" truecount="5" falsecount="0"/>
+      <line num="35" count="1" type="stmt"/>
+      <line num="42" count="2" type="stmt"/>
+      <line num="58" count="1" type="stmt"/>
+    </file>
+  </project>
+</coverage>
